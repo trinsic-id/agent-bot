@@ -8,12 +8,24 @@ namespace AgentBot
     /// Stored in <see cref="Microsoft.Bot.Builder.ConversationState"/> and
     /// backed by <see cref="Microsoft.Bot.Builder.MemoryStorage"/>.
     /// </summary>
-    public class CounterState
+    public class AgentState
     {
         /// <summary>
         /// Gets or sets the number of turns in the conversation.
         /// </summary>
         /// <value>The number of turns in the conversation.</value>
         public int TurnCount { get; set; } = 0;
+
+        /// <summary>
+        /// Gets or sets the wallet key.
+        /// </summary>
+        /// <value>The wallet key.</value>
+        public string WalletKey { get; set; }
+
+        /// <summary>
+        /// Gets or sets the wallet identifier.
+        /// </summary>
+        /// <value>The wallet identifier.</value>
+        public string WalletId { get; set; }
     }
 }

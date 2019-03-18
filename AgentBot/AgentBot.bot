@@ -1,15 +1,28 @@
-﻿{
-  "name": "AgentBot",
-  "services": [
-    {
-      "type": "endpoint",
-      "name": "development",
-      "endpoint": "http://localhost:3978/api/messages",
-      "appId": "",
-      "appPassword": "",
-      "id": "1"
-    }
-  ],
-  "padlock": "",
-  "version": "2.0"
+{
+    "name": "AgentBot",
+    "description": "",
+    "services": [
+        {
+            "type": "endpoint",
+            "appId": "",
+            "appPassword": "",
+            "endpoint": "http://localhost:3978/api/messages",
+            "id": "1",
+            "name": "development"
+        },
+        {
+            "type": "luis",
+            "appId": "711df214-7ea2-4b24-af2d-4821574ad33f",
+            "authoringKey": "c344ecae0038412aa88aced4b15ea08a",
+            "id": "711df214-7ea2-4b24-af2d-4821574ad33f",
+            "name": "AgentBot",
+            "region": "westus",
+            "subscriptionKey": "c344ecae0038412aa88aced4b15ea08a",
+            "version": "0.1"
+        }
+    ],
+    "padlock": "",
+    "version": "2.0",
+    "overrides": null,
+    "path": "/Users/geddoff/Git/streetcrednyc/agent-bot/AgentBot/AgentBot.bot"
 }

@@ -1,9 +1,12 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
+using AgentBot.Dialogs;
 using Microsoft.Bot.Builder;
+using Microsoft.Bot.Builder.Dialogs;
 using Microsoft.Bot.Schema;
 using Microsoft.Extensions.Logging;
 
@@ -22,8 +25,11 @@ namespace AgentBot
     /// <seealso cref="https://docs.microsoft.com/en-us/aspnet/core/fundamentals/dependency-injection?view=aspnetcore-2.1"/>
     public class AgentBotBot : IBot
     {
-        private readonly EchoBotAccessors _accessors;
+        private readonly AgentBotAccessors _accessors;
+        private readonly DialogSet _dialogSet;
         private readonly ILogger _logger;
+        private readonly IServiceProvider _serviceProvider;
+        private readonly BotServices _botServices;
 
         /// <summary>
         /// Initializes a new instance of the class.
@@ -31,7 +37,7 @@ namespace AgentBot
         /// <param name="conversationState">The managed conversation state.</param>
         /// <param name="loggerFactory">A <see cref="ILoggerFactory"/> that is hooked to the Azure App Service provider.</param>
         /// <seealso cref="https://docs.microsoft.com/en-us/aspnet/core/fundamentals/logging/?view=aspnetcore-2.1#windows-eventlog-provider"/>
-        public AgentBotBot(ConversationState conversationState, ILoggerFactory loggerFactory)
+        public AgentBotBot(Microsoft.Bot.Builder.ConversationState conversationState, IServiceProvider serviceProvider, ILoggerFactory loggerFactory, BotServices botServices)
         {
             if (conversationState == null)
             {
@@ -43,13 +49,22 @@ namespace AgentBot
                 throw new System.ArgumentNullException(nameof(loggerFactory));
             }
 
-            _accessors = new EchoBotAccessors(conversationState)
+            _accessors = new AgentBotAccessors(conversationState)
             {
-                CounterState = conversationState.CreateProperty<CounterState>(EchoBotAccessors.CounterStateName),
+                AgentState = conversationState.CreateProperty<AgentState>(AgentBotAccessors.AgentStateName),
+                DialogState = conversationState.CreateProperty<DialogState>(AgentBotAccessors.DialogStateName)
             };
+
+            _dialogSet = new DialogSet(_accessors.DialogState);
+            _dialogSet.Add(new ProvisionAgentDialog("provision-agent", serviceProvider, _accessors));
+            _dialogSet.Add(new CreateInvitationDialog("create-invitation", serviceProvider, _accessors));
+            _dialogSet.Add(new TextPrompt("text-prompt"));
+            _dialogSet.Add(new ConfirmPrompt("yes-no-prompt"));
 
             _logger = loggerFactory.CreateLogger<AgentBotBot>();
             _logger.LogTrace("Turn start.");
+            _serviceProvider = serviceProvider;
+            _botServices = botServices;
         }
 
         /// <summary>
@@ -63,7 +78,7 @@ namespace AgentBot
         /// or threads to receive notice of cancellation.</param>
         /// <returns>A <see cref="Task"/> that represents the work queued to execute.</returns>
         /// <seealso cref="BotStateSet"/>
-        /// <seealso cref="ConversationState"/>
+        /// <seealso cref="Microsoft.Bot.Builder.ConversationState"/>
         /// <seealso cref="IMiddleware"/>
         public async Task OnTurnAsync(ITurnContext turnContext, CancellationToken cancellationToken = default(CancellationToken))
         {
@@ -72,21 +87,68 @@ namespace AgentBot
             // see https://aka.ms/about-bot-activity-message to learn more about the message and other activity types
             if (turnContext.Activity.Type == ActivityTypes.Message)
             {
+                var context = await _dialogSet.CreateContextAsync(turnContext, cancellationToken);
+                var results = await context.ContinueDialogAsync(cancellationToken);
+
                 // Get the conversation state from the turn context.
-                var state = await _accessors.CounterState.GetAsync(turnContext, () => new CounterState(), cancellationToken);
+                var state = await _accessors.AgentState.GetAsync(turnContext, () => new AgentState(), cancellationToken);
 
-                // Bump the turn count for this conversation.
-                state.TurnCount++;
 
-                // Set the property using the accessor.
-                await _accessors.CounterState.SetAsync(turnContext, state, cancellationToken);
+                // If the DialogTurnStatus is Empty we should start a new dialog.
+                if (results.Status == DialogTurnStatus.Empty)
+                {
+                    // Check LUIS model
+                    var recognizerResult = await _botServices.LuisServices["AgentBot"].RecognizeAsync(turnContext, cancellationToken);
+                    var topIntent = recognizerResult?.GetTopScoringIntent();
 
-                // Save the new turn count into the conversation state.
+                    if (topIntent.HasValue && topIntent.Value.score > 0.7)
+                    {
+                        switch (topIntent.Value.intent)
+                        {
+                            case "Agent_Provision":
+                                {
+                                    var result = await context.BeginDialogAsync("provision-agent", null, cancellationToken);
+                                    break;
+                                }
+                            case "Connection_CreateInvitation":
+                                {
+                                    var result = await context.BeginDialogAsync("create-invitation", null, cancellationToken);
+                                    break;
+                                }
+                            default:
+                                {
+                                    await turnContext.SendActivityAsync($"I can't process this intent yet ({topIntent.Value.intent})");
+                                    break;
+                                }
+                        }
+                    }
+                    else
+                    {
+                        state.TurnCount++;
+                        await _accessors.AgentState.SetAsync(turnContext, state, cancellationToken);
+                        var responseMessage = $"Turn {state.TurnCount}: You sent '{turnContext.Activity.Text}'\n";
+                        await turnContext.SendActivityAsync(responseMessage, cancellationToken: cancellationToken);
+                    }
+                }
                 await _accessors.ConversationState.SaveChangesAsync(turnContext, cancellationToken: cancellationToken);
-
-                // Echo back to the user whatever they typed.
-                var responseMessage = $"Turn {state.TurnCount}: You sent '{turnContext.Activity.Text}'\n";
-                await turnContext.SendActivityAsync(responseMessage, cancellationToken: cancellationToken);
+            }
+            else if (turnContext.Activity.Type == ActivityTypes.ConversationUpdate)
+            {
+                if (turnContext.Activity.MembersAdded != null)
+                {
+                    // Iterate over all new members added to the conversation
+                    foreach (var member in turnContext.Activity.MembersAdded)
+                    {
+                        // Greet anyone that was not the target (recipient) of this message
+                        // the 'bot' is the recipient for events from the channel,
+                        // turnContext.Activity.MembersAdded == turnContext.Activity.Recipient.Id indicates the
+                        // bot was added to the conversation.
+                        if (member.Id != turnContext.Activity.Recipient.Id)
+                        {
+                            await turnContext.SendActivityAsync($"Hi there!");
+                        }
+                    }
+                }
             }
             else
             {

@@ -5,18 +5,26 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="AgentBot.bot">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.All" />
     <PackageReference Include="Microsoft.Bot.Builder" Version="4.2.2" />
+    <PackageReference Include="Microsoft.Bot.Builder.Dialogs" Version="4.2.2" />
+    <PackageReference Include="Microsoft.Bot.Builder.AI.Luis" Version="4.2.2" />
     <PackageReference Include="Microsoft.Bot.Builder.Integration.AspNet.Core" Version="4.2.2" />
     <PackageReference Include="Microsoft.Bot.Configuration" Version="4.2.2" />
     <PackageReference Include="Microsoft.Bot.Connector" Version="4.2.2" />
     <PackageReference Include="Microsoft.Bot.Schema" Version="4.2.2" />
     <PackageReference Include="Microsoft.Extensions.Logging.AzureAppServices" Version="2.1.1" />
+    <PackageReference Include="AgentFramework.AspNetCore" Version="3.0.0-preview.578" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Remove="AgentBot.bot" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="AgentBot.bot">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Dialogs\" />
   </ItemGroup>
 </Project>

@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using AgentFramework.AspNetCore.Configuration.Service;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Bot.Builder;
@@ -121,8 +122,20 @@ namespace AgentBot
             // IStorage dataStore = new Microsoft.Bot.Builder.Azure.AzureBlobStorage(blobStorageConfig.ConnectionString, storageContainer);
 
             // Create and add conversation state.
-            var conversationState = new ConversationState(dataStore);
+            var conversationState = new Microsoft.Bot.Builder.ConversationState(dataStore);
             services.AddSingleton(conversationState);
+
+            // Initialize Bot Connected Services client.
+            var connectedServices = new BotServices(botConfig);
+            services.AddSingleton(sp => connectedServices);
+
+            services.AddAgentFramework();
+            services.Configure<AgentOptions>(options =>
+            {
+                options.EndpointHost = Environment.GetEnvironmentVariable("ENDPOINT_HOST")
+                    ?? Configuration.GetSection("AgentOptions:EndpointHost").Get<string>()
+                    ?? Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
+            });
 
             services.AddBot<AgentBotBot>(options =>
             {
