@@ -30,7 +30,7 @@ namespace AgentBot.Dialogs
             AddStep(ProvisionAsync);
         }
 
-        public async Task<DialogTurnResult> CheckAgentAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        private async Task<DialogTurnResult> CheckAgentAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             var state = await _accessors.AgentState.GetAsync(stepContext.Context, () => new AgentState(), cancellationToken);
 
@@ -42,19 +42,19 @@ namespace AgentBot.Dialogs
             return await stepContext.NextAsync();
         }
 
-        public Task<DialogTurnResult> PromptAgentNameAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        private Task<DialogTurnResult> PromptAgentNameAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             return stepContext.PromptAsync("text-prompt",
                 new PromptOptions { Prompt = MessageFactory.Text("What name would you like your agent to use?") });
         }
 
-        public async Task<DialogTurnResult> ProvisionAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        private async Task<DialogTurnResult> ProvisionAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             await stepContext.Context.SendTypingAsync(cancellationToken);
 
             var agentName = stepContext.Result?.ToString() ?? "Agent Chat Bot";
-            var walletKey = $"{Guid.NewGuid()}";
-            var walletId = $"{stepContext.Context.Activity.From.Id}";
+            var walletKey = "DefaultKey";
+            var walletId = $"{Guid.NewGuid().ToString("N")}";
 
             try
             {
@@ -62,7 +62,7 @@ namespace AgentBot.Dialogs
                 {
                     WalletCredentials = new WalletCredentials { Key = walletKey },
                     WalletConfiguration = new WalletConfiguration { Id = walletId },
-                    EndpointUri = new Uri(_agentOptions.EndpointHost),
+                    EndpointUri = new Uri(new Uri(_agentOptions.EndpointHost), walletId),
                     OwnerName = agentName
                 });
             }

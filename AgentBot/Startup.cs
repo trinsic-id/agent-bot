@@ -4,7 +4,9 @@
 using System;
 using System.IO;
 using System.Linq;
+using AgentBot.Services;
 using AgentFramework.AspNetCore.Configuration.Service;
+using AgentFramework.Core.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Bot.Builder;
@@ -14,6 +16,7 @@ using Microsoft.Bot.Connector.Authentication;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace AgentBot
 {
@@ -98,6 +101,7 @@ namespace AgentBot
                 throw new InvalidOperationException(
                     $"The .bot file does not contain an endpoint with name '{environment}'.");
             }
+            services.AddSingleton(endpointService);
 
             // Memory Storage is for local bot debugging only. When the bot
             // is restarted, everything stored in memory will be gone.
@@ -122,14 +126,21 @@ namespace AgentBot
             // IStorage dataStore = new Microsoft.Bot.Builder.Azure.AzureBlobStorage(blobStorageConfig.ConnectionString, storageContainer);
 
             // Create and add conversation state.
-            var conversationState = new Microsoft.Bot.Builder.ConversationState(dataStore);
+            var conversationState = new ConversationState(dataStore);
             services.AddSingleton(conversationState);
+
+            // Create and add conversation state.
+            var userState = new UserState(dataStore);
+            services.AddSingleton(userState);
 
             // Initialize Bot Connected Services client.
             var connectedServices = new BotServices(botConfig);
             services.AddSingleton(sp => connectedServices);
 
+            // Add and configure Agent Framework
             services.AddAgentFramework();
+            services.AddSingleton<IAgentContextProvider, AgentContextProvider>();
+            services.AddSingleton<IEventAggregator>(_ => new ReplayEventAggregator(replayWindow: TimeSpan.FromSeconds(30)));
             services.Configure<AgentOptions>(options =>
             {
                 options.EndpointHost = Environment.GetEnvironmentVariable("ENDPOINT_HOST")
@@ -160,7 +171,8 @@ namespace AgentBot
 
             app.UseDefaultFiles()
                 .UseStaticFiles()
-                .UseBotFramework();
+                .UseBotFramework()
+                .UseAgentFrameworkBot();
         }
     }
 }

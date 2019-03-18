@@ -20,9 +20,10 @@ namespace AgentBot
         /// Contains the <see cref="ConversationState"/> and associated <see cref="IStatePropertyAccessor{T}"/>.
         /// </summary>
         /// <param name="conversationState">The state object that stores the counter.</param>
-        public AgentBotAccessors(ConversationState conversationState)
+        public AgentBotAccessors(ConversationState conversationState, UserState userState)
         {
             ConversationState = conversationState ?? throw new ArgumentNullException(nameof(conversationState));
+            UserState = userState ?? throw new ArgumentNullException(nameof(userState));
         }
 
         /// <summary>
@@ -57,5 +58,11 @@ namespace AgentBot
         /// </summary>
         /// <value>The <see cref="ConversationState"/> object.</value>
         public ConversationState ConversationState { get; }
+
+        /// <summary>
+        /// Gets the <see cref="UserState"/> object for the user.
+        /// </summary>
+        /// <value>The <see cref="UserState"/> object.</value>
+        public UserState UserState { get; }
     }
 }

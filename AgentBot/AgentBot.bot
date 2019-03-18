@@ -4,8 +4,8 @@
     "services": [
         {
             "type": "endpoint",
-            "appId": "",
-            "appPassword": "",
+            "appId": "a1028152-ba30-4bb1-99df-c3eefd8a22c2",
+            "appPassword": "qpSdt[-_x_2K-)yE2oXc0)c$Ag}4(C$w!9@yLq@%D",
             "endpoint": "http://localhost:3978/api/messages",
             "id": "1",
             "name": "development"
@@ -24,5 +24,5 @@
     "padlock": "",
     "version": "2.0",
     "overrides": null,
-    "path": "/Users/geddoff/Git/streetcrednyc/agent-bot/AgentBot/AgentBot.bot"
+    "path": "./AgentBot.bot"
 }

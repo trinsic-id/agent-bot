@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using AgentBot.Dialogs;
 using Microsoft.Bot.Builder;
 using Microsoft.Bot.Builder.Dialogs;
+using Microsoft.Bot.Configuration;
 using Microsoft.Bot.Schema;
 using Microsoft.Extensions.Logging;
 
@@ -37,27 +38,44 @@ namespace AgentBot
         /// <param name="conversationState">The managed conversation state.</param>
         /// <param name="loggerFactory">A <see cref="ILoggerFactory"/> that is hooked to the Azure App Service provider.</param>
         /// <seealso cref="https://docs.microsoft.com/en-us/aspnet/core/fundamentals/logging/?view=aspnetcore-2.1#windows-eventlog-provider"/>
-        public AgentBotBot(Microsoft.Bot.Builder.ConversationState conversationState, IServiceProvider serviceProvider, ILoggerFactory loggerFactory, BotServices botServices)
+        public AgentBotBot(
+            ConversationState conversationState, 
+            UserState userState, 
+            IServiceProvider serviceProvider, 
+            ILoggerFactory loggerFactory, 
+            BotServices botServices,
+            EndpointService endpointService)
         {
             if (conversationState == null)
             {
-                throw new System.ArgumentNullException(nameof(conversationState));
+                throw new ArgumentNullException(nameof(conversationState));
+            }
+
+            if (userState == null)
+            {
+                throw new ArgumentNullException(nameof(userState));
             }
 
             if (loggerFactory == null)
             {
-                throw new System.ArgumentNullException(nameof(loggerFactory));
+                throw new ArgumentNullException(nameof(loggerFactory));
             }
 
-            _accessors = new AgentBotAccessors(conversationState)
+            _accessors = new AgentBotAccessors(conversationState, userState)
             {
-                AgentState = conversationState.CreateProperty<AgentState>(AgentBotAccessors.AgentStateName),
+                AgentState = userState.CreateProperty<AgentState>(AgentBotAccessors.AgentStateName),
                 DialogState = conversationState.CreateProperty<DialogState>(AgentBotAccessors.DialogStateName)
             };
+
+            // Validate AppId.
+            // Note: For local testing, .bot AppId is empty for the Bot Framework Emulator.
+            AppId = string.IsNullOrWhiteSpace(endpointService.AppId) ? "1" : endpointService.AppId;
 
             _dialogSet = new DialogSet(_accessors.DialogState);
             _dialogSet.Add(new ProvisionAgentDialog("provision-agent", serviceProvider, _accessors));
             _dialogSet.Add(new CreateInvitationDialog("create-invitation", serviceProvider, _accessors));
+            _dialogSet.Add(new AcceptInvitationDialog("accept-invitation", serviceProvider, _accessors));
+            _dialogSet.Add(new NotifyConnectedDialog("notify-connected", serviceProvider, _accessors, AppId));
             _dialogSet.Add(new TextPrompt("text-prompt"));
             _dialogSet.Add(new ConfirmPrompt("yes-no-prompt"));
 
@@ -66,6 +84,11 @@ namespace AgentBot
             _serviceProvider = serviceProvider;
             _botServices = botServices;
         }
+
+        /// <summary>Gets the bot's app ID.</summary>
+        /// <remarks>AppId required to continue a conversation.
+        /// See <see cref="BotAdapter.ContinueConversationAsync"/> for more details.</remarks>
+        private string AppId { get; }
 
         /// <summary>
         /// Every conversation turn for our Echo Bot will call this method.
@@ -97,39 +120,48 @@ namespace AgentBot
                 // If the DialogTurnStatus is Empty we should start a new dialog.
                 if (results.Status == DialogTurnStatus.Empty)
                 {
-                    // Check LUIS model
-                    var recognizerResult = await _botServices.LuisServices["AgentBot"].RecognizeAsync(turnContext, cancellationToken);
-                    var topIntent = recognizerResult?.GetTopScoringIntent();
-
-                    if (topIntent.HasValue && topIntent.Value.score > 0.7)
+                    if (Uri.TryCreate(turnContext.Activity.Text, UriKind.Absolute, out var uri))
                     {
-                        switch (topIntent.Value.intent)
-                        {
-                            case "Agent_Provision":
-                                {
-                                    var result = await context.BeginDialogAsync("provision-agent", null, cancellationToken);
-                                    break;
-                                }
-                            case "Connection_CreateInvitation":
-                                {
-                                    var result = await context.BeginDialogAsync("create-invitation", null, cancellationToken);
-                                    break;
-                                }
-                            default:
-                                {
-                                    await turnContext.SendActivityAsync($"I can't process this intent yet ({topIntent.Value.intent})");
-                                    break;
-                                }
-                        }
+                        await context.BeginDialogAsync("accept-invitation", uri, cancellationToken);
                     }
                     else
                     {
-                        state.TurnCount++;
-                        await _accessors.AgentState.SetAsync(turnContext, state, cancellationToken);
-                        var responseMessage = $"Turn {state.TurnCount}: You sent '{turnContext.Activity.Text}'\n";
-                        await turnContext.SendActivityAsync(responseMessage, cancellationToken: cancellationToken);
+                        // Check LUIS model
+                        var recognizerResult = await _botServices.LuisServices["AgentBot"].RecognizeAsync(turnContext, cancellationToken);
+                        var topIntent = recognizerResult?.GetTopScoringIntent();
+
+                        if (topIntent.HasValue && topIntent.Value.score > 0.7)
+                        {
+                            switch (topIntent.Value.intent)
+                            {
+                                case "Agent_Provision":
+                                    {
+                                        await context.BeginDialogAsync("provision-agent", null, cancellationToken);
+                                        break;
+                                    }
+                                case "Connection_CreateInvitation":
+                                    {
+                                        await context.BeginDialogAsync("create-invitation", null, cancellationToken);
+                                        break;
+                                    }
+                                default:
+                                    {
+                                        await turnContext.SendActivityAsync($"I can't process this intent yet ({topIntent.Value.intent})");
+                                        break;
+                                    }
+                            }
+                        }
+                        else
+                        {
+                            state.TurnCount++;
+                            await _accessors.AgentState.SetAsync(turnContext, state, cancellationToken);
+                            var responseMessage = $"Turn {state.TurnCount}: You sent '{turnContext.Activity.Text}'\n";
+                            await turnContext.SendActivityAsync(responseMessage, cancellationToken: cancellationToken);
+                        }
                     }
                 }
+
+                await _accessors.UserState.SaveChangesAsync(turnContext, cancellationToken: cancellationToken);
                 await _accessors.ConversationState.SaveChangesAsync(turnContext, cancellationToken: cancellationToken);
             }
             else if (turnContext.Activity.Type == ActivityTypes.ConversationUpdate)
@@ -143,7 +175,7 @@ namespace AgentBot
                         // the 'bot' is the recipient for events from the channel,
                         // turnContext.Activity.MembersAdded == turnContext.Activity.Recipient.Id indicates the
                         // bot was added to the conversation.
-                        if (member.Id != turnContext.Activity.Recipient.Id)
+                        if (member.Id == turnContext.Activity.Recipient.Id)
                         {
                             await turnContext.SendActivityAsync($"Hi there!");
                         }
