@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentBot.Dialogs;
@@ -10,6 +12,7 @@ using Microsoft.Bot.Builder.Dialogs;
 using Microsoft.Bot.Configuration;
 using Microsoft.Bot.Schema;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
 
 namespace AgentBot
 {
@@ -76,8 +79,10 @@ namespace AgentBot
             _dialogSet.Add(new CreateInvitationDialog("create-invitation", serviceProvider, _accessors));
             _dialogSet.Add(new AcceptInvitationDialog("accept-invitation", serviceProvider, _accessors));
             _dialogSet.Add(new NotifyConnectedDialog("notify-connected", serviceProvider, _accessors, AppId));
+            _dialogSet.Add(new IssueCredentialDialog("issue-credential"));
             _dialogSet.Add(new TextPrompt("text-prompt"));
             _dialogSet.Add(new ConfirmPrompt("yes-no-prompt"));
+            _dialogSet.Add(new ChoicePrompt("credential-type-prompt"));
 
             _logger = loggerFactory.CreateLogger<AgentBotBot>();
             _logger.LogTrace("Turn start.");
@@ -142,6 +147,16 @@ namespace AgentBot
                                 case "Connection_CreateInvitation":
                                     {
                                         await context.BeginDialogAsync("create-invitation", null, cancellationToken);
+                                        break;
+                                    }
+                                case "Credential_Issue":
+                                    {
+                                        string entity = null;
+                                        if (recognizerResult.Entities["CredentialType"] is JArray jobj)
+                                        {
+                                            entity = jobj.FirstOrDefault()?.ToObject<string>();
+                                        }
+                                        await context.BeginDialogAsync("issue-credential", entity);
                                         break;
                                     }
                                 default:
